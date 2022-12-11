@@ -222,7 +222,7 @@
                     data.days = days;
                     var sunUp = 12.68 - data.dayHours / 2;
                     var sunDown = 12.68 + data.dayHours / 2;
-                    if((hoursStart >= sunUp && hoursStart <= sunDown) || (hoursEnd >= sunUp && hoursEnd <= sunDown)) {
+                    if((hoursStart >= sunUp && hoursStart <= sunDown) || (hoursEnd >= sunUp && hoursEnd <= sunDown) || (hoursStart < sunUp && hoursEnd > sunDown)) {
                         var dayHourStart = Math.max(hoursStart - sunUp, 0);
                         var dayHourEnd = Math.min(hoursEnd - sunUp, data.dayHours);
                         if(hoursEnd != hoursStart) {
