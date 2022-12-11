@@ -64,14 +64,18 @@
                     }
 
                     return function solarPerDay(day, end = null) {
+                        day = Number(day);
+                        end = Number(end);
+                        if(isNaN(day))
+                            throw new Error("Ongeldige dag van het jaar");
                         //we doen midden op de dag, van daar +0.5.
-                        if(end && end !== day) {
+                        if(!isNaN(end) && end != day) {
+                            day = day % 365;
+                            end = end % 365;
                             //gemiddelde van meerdere dagen
-                            if(end <= day)
-                                throw new Error("Ongeldige dag van het jaar");
                             var data = {};
                             var c = 0;
-                            for(var i = day; i < end; i++) {
+                            for(var i = day; i < end; i = (i + 1) % 365) {
                                 let d = solarPerDay(i);
                                 for(var key in d) {
                                     if(typeof d[key] !== 'number')
@@ -152,6 +156,8 @@
                 {name: 'solarPowerTime', description: 'Vermogen zonnepanelen op de geselecteerde tijd', unit: 'W/m2'},
                 {head: 'data-sun'},
                 {name: 'dayHours', description: 'Aantal uur zon', unit: 'uur'},
+                {name: 'sunUpTime', description: 'Zonsopkomst', unit: ''},
+                {name: 'sunDownTime', description: 'Zonsondergang', unit: ''},
                 {name: 'sunAngle', description: 'Hoek van de zon op het aardoppervlakte', unit: 'graden'},
                 {name: 'totalSunPowerOveral', description: 'Totaal vermogen van de zon over de dagen', unit: 'kWh/m2'},
                 {name: 'totalSunPower', description: 'Totaal vermogen van de zon over de dag', unit: 'kWh/m2'},
@@ -173,6 +179,11 @@
                     z = z.substr(0, z.length - 1);
                 return n.join('.') + (z ? '.' + z : '');
             }
+            function dayDiff(a,b) {
+                a = new Date(a);
+                b = new Date(b);
+                return Math.floor(((b.getTime() - a.getTime()) + ((a.getTimezoneOffset() - b.getTimezoneOffset()) * 60 * 1000))/(1000 * 60 * 60 * 24));
+            }
             function doSolarCalculate() {
                 try {
                     var getEl = x => document.getElementById(x);
@@ -186,8 +197,8 @@
                     dateFrom.setHours(0);
                     dateTo.setHours(0);
                     var yStart = new Date(dateFrom.getFullYear() + '-1-1');
-                    var dayFrom = Math.round(Math.max((dateFrom.getTime() - yStart.getTime())/(1000*60*60*24), 0));
-                    var dayTo = Math.round(Math.min((dateTo.getTime() - yStart.getTime())/(1000*60*60*24), 365));
+                    var dayFrom = dayDiff(yStart, dateFrom);
+                    var dayTo = dayDiff(yStart, dateTo);
                     var time = new Date(dateFrom.toLocaleDateString() + ' ' + getValue('time')).getTime();
                     var endTime = isChecked('moreTime') ? new Date(dateFrom.toLocaleDateString() + ' ' + getValue('endTime')).getTime() : time;
                     if(isNaN(time) || isNaN(endTime) || time < dateFrom.getTime() || endTime < time)
@@ -195,17 +206,19 @@
                     var hoursStart = (time - dateFrom.getTime()) / (1000*60*60);
                     var hoursEnd = (time - dateFrom.getTime()) / (1000*60*60);
                     var selectedTimeLength = hoursEnd - hoursStart;
+                    var isSummerTime = false;
                     if(dateFrom.getTimezoneOffset() != yStart.getTimezoneOffset()) { //zomertijd?
                         hoursStart--;
                         hoursEnd--;
+                        isSummerTime = true;
                     }
+                    var days = dayTo - dayFrom + 1;
                     dayFrom = (dayFrom + getNumber('dateCorrection')) % 365;
-                    dayTo += (dayTo + getNumber('dateCorrection')) % 365;
-
+                    dayTo = (dayTo + getNumber('dateCorrection')) % 365;
                     var data = calculateSolarPower(getNumber('earthLocation'), getNumber('nominalPower'), getNumber('efficency') / 100, getNumber('atmosphereAbsorption') / 100, getNumber('solarConstant'), getNumber('earthAngle'))(dayFrom, dayTo);
-                    data.days = dayTo - dayFrom + 1;
-                    var sunUp = 12.6 - data.dayHours / 2;
-                    var sunDown = 12.6 + data.dayHours / 2;
+                    data.days = days;
+                    var sunUp = 12.68 - data.dayHours / 2;
+                    var sunDown = 12.68 + data.dayHours / 2;
                     if((hoursStart >= sunUp && hoursStart <= sunDown) || (hoursEnd >= sunUp && hoursEnd <= sunDown)) {
                         var dayHourStart = Math.max(hoursStart - sunUp, 0);
                         var dayHourEnd = Math.min(hoursEnd - sunUp, data.dayHours);
@@ -224,13 +237,25 @@
                         data.totalSunPowerOveral = data.totalSunPower * data.days;
                         data.totalSolarPowerOveral = data.totalSolarPower * data.days;
                     }
+                    var sunUpTime = new Date(dateFrom);
+                    sunUpTime.setHours(Math.floor(sunUp));
+                    sunUpTime.setMinutes((sunUp % 1) * 60);
+                    var sunDownTime = new Date(dateFrom);
+                    sunDownTime.setHours(Math.floor(sunDown));
+                    sunDownTime.setMinutes((sunDown % 1) * 60);
+                    if(isSummerTime) {
+                        sunUpTime.setHours(sunUpTime.getHours() + 1);
+                        sunDownTime.setHours(sunDownTime.getHours() + 1);
+                    }
+                    data.sunUpTime = sunUpTime.toLocaleTimeString();
+                    data.sunDownTime = sunDownTime.toLocaleTimeString();
                     var box = null;
                     for(var info of displayData) {
                         if(info.head) {
                             box = document.getElementById(info.head);
                             box.textContent = '';
                         } else if(data[info.name]) {
-                            box.textContent += info.description + ': ' + displayNumber(Number(data[info.name])) + ' ' + info.unit + '\n';
+                            box.textContent += info.description + ': ' + ((typeof data[info.name] == 'number') ? displayNumber(Number(data[info.name])) : data[info.name]) + ' ' + info.unit + '\n';
                         }
                     }
                 } catch(ex) {
