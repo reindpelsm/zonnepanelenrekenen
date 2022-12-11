@@ -75,7 +75,10 @@
                             //gemiddelde van meerdere dagen
                             var data = {};
                             var c = 0;
-                            for(var i = day; i < end; i = (i + 1) % 365) {
+                            var oneCycleRequired = day > end;
+                            for(var i = day; oneCycleRequired || i <= end; i = (i + 1) % 365) {
+                                if(i > (i + 1) % 365)
+                                    oneCycleRequired = false;
                                 let d = solarPerDay(i);
                                 for(var key in d) {
                                     if(typeof d[key] !== 'number')
