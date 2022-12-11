@@ -65,7 +65,7 @@
 
                     return function solarPerDay(day, end = null) {
                         day = Number(day);
-                        end = Number(end);
+                        end = (end != null) ? Number(end) : NaN;
                         if(isNaN(day))
                             throw new Error("Ongeldige dag van het jaar");
                         //we doen midden op de dag, van daar +0.5.
