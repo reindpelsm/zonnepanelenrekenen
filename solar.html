@@ -53,7 +53,7 @@
                                 var a = hour * dayHourToRadionFactor - ninetyDegrees;
                                 var b = endHour * dayHourToRadionFactor - ninetyDegrees;
                                 //gemiddelde is oppervlakte delen door lengte
-                                return maxSunPower * abs(sin(a) - sin(b))/(a - b);
+                                return maxSunPower * abs(sin(a) - sin(b))/abs(a - b);
                             }
                             return maxSunPower * cos(hour * dayHourToRadionFactor - ninetyDegrees);
                         }
@@ -223,8 +223,8 @@
                     var sunUp = 12.68 - data.dayHours / 2;
                     var sunDown = 12.68 + data.dayHours / 2;
                     if((hoursStart >= sunUp && hoursStart <= sunDown) || (hoursEnd >= sunUp && hoursEnd <= sunDown) || (hoursStart < sunUp && hoursEnd > sunDown)) {
-                        var dayHourStart = Math.max(hoursStart - sunUp, 0);
-                        var dayHourEnd = Math.min(hoursEnd - sunUp, data.dayHours);
+                        var dayHourStart = Math.min(Math.max(hoursStart - sunUp, 0), data.dayHours);
+                        var dayHourEnd = Math.min(Math.max(hoursEnd - sunUp, 0), data.dayHours);
                         if(hoursEnd != hoursStart) {
                             data.sunPowerDuringTime = (data.sunPowerHour(dayHourStart, dayHourEnd) / (dayHourEnd - dayHourStart)) * selectedTimeLength;
                             data.totalSunPowerDuringTime = (data.sunPowerDuringTime * (selectedTimeLength*60*60))/3600000;
