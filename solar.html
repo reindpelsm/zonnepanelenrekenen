@@ -226,10 +226,10 @@
                         var dayHourStart = Math.min(Math.max(hoursStart - sunUp, 0), data.dayHours);
                         var dayHourEnd = Math.min(Math.max(hoursEnd - sunUp, 0), data.dayHours);
                         if(hoursEnd != hoursStart) {
-                            data.sunPowerDuringTime = (data.sunPowerHour(dayHourStart, dayHourEnd) / (dayHourEnd - dayHourStart)) * selectedTimeLength;
+                            data.sunPowerDuringTime = data.sunPowerHour(dayHourStart, dayHourEnd) * ((dayHourEnd - dayHourStart) / selectedTimeLength);
                             data.totalSunPowerDuringTime = (data.sunPowerDuringTime * (selectedTimeLength*60*60))/3600000;
                             data.solarPowerDuringTime = data.sunPowerDuringTime * data.powerFactor;
-                            data.totalSolarPowerDuringTime = data.totalSunPowerDuringTime * 1000 * data.powerFactor;
+                            data.totalSolarPowerDuringTime = data.totalSunPowerDuringTime * data.powerFactor;
                             data.selectedTimeLength = selectedTimeLength;
                         } else {
                             data.sunPowerTime = data.sunPowerHour(dayHourStart);
