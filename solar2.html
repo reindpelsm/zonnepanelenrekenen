@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Solar power calculator</title>
+    </head>
+    <body>
+        <script type="text/javascript">
+            var calculateSolarPower = (() => {
+                const PI = Math.PI;
+                const cos = Math.cos.bind(Math);
+                const sin = Math.sin.bind(Math);
+                const tan = Math.tan.bind(Math);
+                const sqrt = Math.sqrt.bind(Math);
+                const acos = Math.acos.bind(Math);
+                const abs = Math.abs.bind(Math); //abs(x) = |x|
+                const defaultSolarConstant = 1361;
+                const defaultDegreeAxes = 23.4365472133;
+                const degreeToRadianFactor = PI/180;
+                const radianToDegreeFactor = 180/PI;
+                const dayToRadionFactor = PI/182.5;
+                const ninetyDegrees = PI/2;
+                const averageCosValue = 2/PI;
+                const defaultCosAxes = cos(defaultDegreeAxes*degreeToRadianFactor + ninetyDegrees);
+
+                return function calculateSolarPower(position, solarWatt, energyEfficency, atmosphereAbsorption, solarConstant = defaultSolarConstant, degreeAxes = defaultDegreeAxes) {
+                    if(position > 90 || position < -90)
+                        throw new Error("Het aantal graden noorderbreedte moet tussen -90 en 90 zitten.");
+                    var isSouth = position < 0;
+                    position = abs(position);
+                    if(energyEfficency <= 0 || energyEfficency > 1)
+                        throw new Error("Energie efficientie moet tussen 0 en 1 zitten");
+                    if(atmosphereAbsorption <= 0 || atmosphereAbsorption > 1)
+                        throw new Error("Atmosfeer absorptie moet tussen 0 en 1 zitten")
+                    if(solarConstant <= 0)
+                        throw new Error("Zoneconstante moet hoger zijn dan 0");
+                    if(degreeAxes < -45 || degreeAxes > 45)
+                        throw new Error("Het aantal graden dat de aardas is gedraaid mag niet te groot. (maar eh, zoveel schommelt hij nou ook weer niet)");
+                    var cosAxes = (defaultDegreeAxes === degreeAxes) ? defaultCosAxes : cos(degreeAxes*degreeToRadianFactor + ninetyDegrees)
+                    var powerFactor = 0.001 * solarWatt * energyEfficency;
+                    var positionRadian = position * degreeToRadianFactor;
+                    var d = null;
+
+                    function setDayFunction(d) {
+                        var maxSunPower = d.maxSunPower;
+                        var dayHours = d.dayHours;
+                        var dayHourToRadionFactor = PI/dayHours;
+                        d.sunPowerHour = function sunPowerHour(hour, endHour) {
+                            if(hour < 0 || hour > dayHours)
+                                throw new Error("Hour must be between 0 and dayHours");
+                            if(endHour && endHour !== hour) {
+                                if(endHour <= hour || hour > dayHours)
+                                    throw new Error("End hour must be between hour and dayHours");
+                                var a = hour * dayHourToRadionFactor - ninetyDegrees;
+                                var b = endHour * dayHourToRadionFactor - ninetyDegrees;
+                                //gemiddelde is oppervlakte delen door lengte
+                                return maxSunPower * abs(sin(a) - sin(b))/abs(a - b);
+                            }
+                            return maxSunPower * cos(hour * dayHourToRadionFactor - ninetyDegrees);
+                        }
+                        d.solarPowerHour = function(hour) {
+                            return sunPowerPerHour(hour) * powerFactor;
+                        };
+                        return d;
+                    }
+
+                    return function solarPerDay(day, end = null) {
+                        day = Number(day);
+                        end = (end != null) ? Number(end) : NaN;
+                        if(isNaN(day))
+                            throw new Error("Ongeldige dag van het jaar");
+                        //we doen midden op de dag, van daar +0.5.
+                        if(!isNaN(end) && end != day) {
+                            day = day % 365;
+                            end = end % 365;
+                            //gemiddelde van meerdere dagen
+                            var data = {};
+                            var c = 0;
+                            var oneCycleRequired = day > end;
+                            for(var i = day; oneCycleRequired || i <= end; i = (i + 1) % 365) {
+                                if(i > (i + 1) % 365)
+                                    oneCycleRequired = false;
+                                let d = solarPerDay(i);
+                                for(var key in d) {
+                                    if(typeof d[key] !== 'number')
+                                        continue;
+                                    if(data[key])
+                                        data[key] += d[key];
+                                    else
+                                        data[key] = d[key];
+                                }
+                                c++;
+                            }
+                            for(var key in data)
+                                data[key] /= c;
+                            return setDayFunction(data);
+                        }
+                        var earthOrbitAngle = ((parseInt(day) % 365) + 0.5) * dayToRadionFactor;
+                        var beta = acos(cos(earthOrbitAngle)*cosAxes); //β
+                        if(isNaN(beta))
+                            throw new Error("Ongeldige gegevens");
+                        var gamma = beta + positionRadian - ninetyDegrees; //γ
+                        var theta = beta - positionRadian + ninetyDegrees; //θ
+                        var sinGamma = sin(gamma);
+                        var cosGamma = cos(gamma); //optimalisation
+                        var sinTheta = sin(theta);
+                        var tanBeta = tan(beta);
+                        var b = cosGamma/tanBeta+sinGamma;
+                        var s = sqrt(1-2*b*sinTheta+b**2);
+                        //d is independent of the day of the year.
+                        if(d == null) {
+                            var cosTheta = cos(theta);
+                            d = sqrt((sinGamma-sinTheta)**2+(cosGamma-cosTheta)**2);
+                        }
+                        var psimax = acos(-1+(2*s)/d);
+                        if(isNaN(psimax))
+                            throw new Error("Ongeldige gegevens");
+                        var dayHours = 24*(psimax/PI);
+                        var maxSunPower = atmosphereAbsorption * cosGamma * solarConstant;
+                        var maxSolarPower = maxSunPower * powerFactor;
+                        var averageSunPowerDuringDay = maxSunPower * averageCosValue;
+                        var averageSolarPowerDuringDay = averageSunPowerDuringDay * powerFactor;
+                        var averageSunPower = (averageSunPowerDuringDay * dayHours) / 24;
+                        var averageSolarPower = averageSunPower * powerFactor;
+                        var peakSunHours = (averageSunPowerDuringDay / 1000) * dayHours;
+                        var totalSunPower = (averageSunPowerDuringDay * (dayHours*60*60))/3600000;
+                        var totalSolarPower = totalSunPower * powerFactor
+                        var dayHourToRadionFactor = PI/dayHours;
+                        return setDayFunction({
+                            orbitAngle: earthOrbitAngle * radianToDegreeFactor, //in graden
+                            dayHours, //in uren
+                            sunOrbitAngle: psimax * radianToDegreeFactor, //tot hoe ver komt de zon?
+                            sunAngle: (ninetyDegrees - gamma) * radianToDegreeFactor, //in graden (hoek van de zon)
+                            maxSunPower, //in W/m2. W = J/s
+                            maxSolarPower, //in W
+                            averageSunPowerDuringDay, //in W/m2
+                            averageSolarPowerDuringDay, //inkW
+                            averageSunPower, //in W/m2
+                            averageSolarPower, //in W
+                            totalSunPower, //in kWh/m2
+                            totalSolarPower, //in kWh
+                            peakSunHours,
+                            powerFactor
+                        })
+                    }
+                }
+            })();
+            var displayData = [
+                {head: 'data-solarpanels'},
+                {name: 'days', description: 'Aantal dagen geselecteerd', unit: 'dagen'},
+                {name: 'totalSolarPowerOveral', description: 'Totaal vermogen van de zonnepanelen over de dagen', unit: 'kWh'},
+                {name: 'totalSolarPower', description: 'Totaal vermogen van de zonnepanelen over de dag', unit: 'kWh'},
+                {name: 'peakSunHours', description: 'Aantal piek zon uren op deze dag', unit: 'uren'},
+                {name: 'maxSolarPower', description: 'Vermogen van de zonnepanelen op het hoogste moment (12 uur)', unit: 'W'},
+                {name: 'averageSolarPower', description: 'Gemiddeld vermogen vanzonnepanelen over 24 uur', unit: 'W'},
+                {name: 'averageSolarPowerDuringDay', description: 'Gemiddeld vermogen van de zonnepanelen wanneer het licht is', unit: 'W'},
+                {name: 'selectedTimeLength', description: 'Aantal uren geselecteerd', unit: 'uren'},
+                {name: 'solarPowerDuringTime', description: 'Gemiddeld vermogen zonnepanelen tijdens geselecteerd tijdvak', unit: 'W'},
+                {name: 'totalSolarPowerDuringTime', description: 'Totaal vermogen zonnepanelen tijdens geselecteerd tijdvak', unit: 'kWh'},
+                {name: 'solarPowerTime', description: 'Vermogen zonnepanelen op de geselecteerde tijd', unit: 'W/m2'},
+                {head: 'data-sun'},
+                {name: 'dayHours', description: 'Aantal uur zon', unit: 'uur'},
+                {name: 'sunUpTime', description: 'Zonsopkomst', unit: ''},
+                {name: 'sunDownTime', description: 'Zonsondergang', unit: ''},
+                {name: 'sunAngle', description: 'Hoek van de zon op het aardoppervlakte', unit: 'graden'},
+                {name: 'totalSunPowerOveral', description: 'Totaal vermogen van de zon over de dagen', unit: 'kWh/m2'},
+                {name: 'totalSunPower', description: 'Totaal vermogen van de zon over de dag', unit: 'kWh/m2'},
+                {name: 'maxSunPower', description: 'Vermogen zonne energie op het hoogste moment (12 uur)', unit: 'W/m2'},
+                {name: 'averageSunPowerDuringDay', description: 'Gemiddeld vermogen zonne energie wanneer het licht is', unit: 'W/m2'},
+                {name: 'averageSunPower', description: 'Gemiddeld vermogen zonne energie over 24 uur', unit: 'W/m2'},
+                {name: 'sunPowerDuringTime', description: 'Gemiddeld vermogen zonne energie tijdens geselecteerd tijdvak', unit: 'W/m2'},
+                {name: 'totalSunPowerDuringTime', description: 'Totaal vermogen zonne energie tijdens geselecteerd tijdvak', unit: 'kWh/m2'},
+                {name: 'sunPowerTime', description: 'Vermogen zonne energie op de geselecteerde tijd', unit: 'W/m2'},
+                {head: 'data-extra'},
+                {name: 'orbitAngle', description: 'Baan van aarde om de zon hoek (0 = winter)', unit: 'graden'},
+                {name: 'sunOrbitAngle', description: 'Hoek van de baan rondom aarde dat wordt belicht (0-180)', unit: 'graden'},               
+            ];
+            function displayNumber(x) {
+                var z = Number(x).toFixed(4);
+                var n = z.split('.');
+                z = n.pop();
+                while(z.endsWith('0'))
+                    z = z.substr(0, z.length - 1);
+                return n.join('.') + (z ? '.' + z : '');
+            }
+            function dayDiff(a,b) {
+                a = new Date(a);
+                b = new Date(b);
+                return Math.floor(((b.getTime() - a.getTime()) + ((a.getTimezoneOffset() - b.getTimezoneOffset()) * 60 * 1000))/(1000 * 60 * 60 * 24));
+            }
+            function doSolarCalculate() {
+                try {
+                    var getEl = x => document.getElementById(x);
+                    var getValue = x => getEl(x).value;
+                    var getNumber = x => Number(getValue(x));
+                    var isChecked = x => getEl(x).checked;
+                    var dateFrom = new Date(getValue('dateFrom'));
+                    var dateTo =  isChecked('moreDays') ? new Date(getValue('dateTo')) : dateFrom;
+                    if(isNaN(dateFrom.getTime()) || isNaN(dateTo.getTime()) || dateFrom.getFullYear() !== dateTo.getFullYear() || dateFrom.getTime() > dateTo.getTime())
+                        throw new Error("Ongeldige datums!");
+                    dateFrom.setHours(0);
+                    dateTo.setHours(0);
+                    var yStart = new Date(dateFrom.getFullYear() + '-1-1');
+                    var dayFrom = dayDiff(yStart, dateFrom);
+                    var dayTo = dayDiff(yStart, dateTo);
+                    var time = new Date(dateFrom.toDateString() + ' ' + getValue('time')).getTime();
+                    var endTime = isChecked('moreTime') ? new Date(dateFrom.toDateString() + ' ' + getValue('endTime')).getTime() : time;
+                    if(isNaN(time) || isNaN(endTime) || time < dateFrom.getTime() || endTime < time)
+                        throw new Error("Ongeldige tijd");
+                    var hoursStart = (time - dateFrom.getTime()) / (1000*60*60);
+                    var hoursEnd = (endTime - dateFrom.getTime()) / (1000*60*60);
+                    var selectedTimeLength = hoursEnd - hoursStart;
+                    var isSummerTime = false;
+                    if(dateFrom.getTimezoneOffset() != yStart.getTimezoneOffset()) { //zomertijd?
+                        hoursStart--;
+                        hoursEnd--;
+                        isSummerTime = true;
+                    }
+                    var days = dayTo - dayFrom + 1;
+                    dayFrom = (dayFrom + getNumber('dateCorrection')) % 365;
+                    dayTo = (dayTo + getNumber('dateCorrection')) % 365;
+                    var data = calculateSolarPower(getNumber('earthLocation'), getNumber('nominalPower'), getNumber('efficency') / 100, getNumber('atmosphereAbsorption') / 100, getNumber('solarConstant'), getNumber('earthAngle'))(dayFrom, dayTo);
+                    data.days = days;
+                    var sunUp = 12.68 - data.dayHours / 2;
+                    var sunDown = 12.68 + data.dayHours / 2;
+                    if((hoursStart >= sunUp && hoursStart <= sunDown) || (hoursEnd >= sunUp && hoursEnd <= sunDown) || (hoursStart < sunUp && hoursEnd > sunDown)) {
+                        var dayHourStart = Math.min(Math.max(hoursStart - sunUp, 0), data.dayHours);
+                        var dayHourEnd = Math.min(Math.max(hoursEnd - sunUp, 0), data.dayHours);
+                        if(hoursEnd != hoursStart) {
+                            data.sunPowerDuringTime = data.sunPowerHour(dayHourStart, dayHourEnd) * ((dayHourEnd - dayHourStart) / selectedTimeLength);
+                            data.totalSunPowerDuringTime = (data.sunPowerDuringTime * (selectedTimeLength*60*60))/3600000;
+                            data.solarPowerDuringTime = data.sunPowerDuringTime * data.powerFactor;
+                            data.totalSolarPowerDuringTime = data.totalSunPowerDuringTime * data.powerFactor;
+                            data.selectedTimeLength = selectedTimeLength;
+                        } else {
+                            data.sunPowerTime = data.sunPowerHour(dayHourStart);
+                            data.solarPowerTime = data.sunPowerTime * data.powerFactor;
+                        }
+                    }
+                    if(dayFrom != dayTo) {
+                        data.totalSunPowerOveral = data.totalSunPower * data.days;
+                        data.totalSolarPowerOveral = data.totalSolarPower * data.days;
+                    }
+                    var sunUpTime = new Date(dateFrom);
+                    sunUpTime.setHours(Math.floor(sunUp));
+                    sunUpTime.setMinutes((sunUp % 1) * 60);
+                    var sunDownTime = new Date(dateFrom);
+                    sunDownTime.setHours(Math.floor(sunDown));
+                    sunDownTime.setMinutes((sunDown % 1) * 60);
+                    if(isSummerTime) {
+                        sunUpTime.setHours(sunUpTime.getHours() + 1);
+                        sunDownTime.setHours(sunDownTime.getHours() + 1);
+                    }
+                    data.sunUpTime = sunUpTime.toLocaleTimeString();
+                    data.sunDownTime = sunDownTime.toLocaleTimeString();
+                    var box = null;
+                    for(var info of displayData) {
+                        if(info.head) {
+                            box = document.getElementById(info.head);
+                            box.textContent = '';
+                        } else if(data[info.name]) {
+                            box.textContent += info.description + ': ' + ((typeof data[info.name] == 'number') ? displayNumber(Number(data[info.name])) : data[info.name]) + ' ' + info.unit + '\n';
+                        }
+                    }
+                } catch(ex) {
+                    console.error(ex);
+                    alert(ex.message);
+                }
+            }
+            
+        </script>
+        <fieldset>
+            <legend>Zonnepaneel informatie</legend>
+            <label for="nominalPower">Wattpiek zonnepaneel installatie (Wp):</label>
+            <input name="nominalPower" id="nominalPower" type="number" value="325" min="1" /><br /><br/>
+            <label for="efficency">Efficientie van installatie %:</label>
+            <input name="efficency" id="efficency" type="number" value="80" min="0.1" max="100" /><br /><br/>
+        </fieldset>
+        <br />
+        <fieldset>
+            <legend>Locatie gegevens</legend>
+            <label for="earthLocation">Noorderbreedte op de aarde (-90 tot 90 graden):</label>
+            <input name="earthLocation" id="earthLocation" type="number" value="51" max="90" min="-90" /><br /><br/>
+            <label for="atmosphereAbsorption">Hoeveel procent van het zonlicht laat de atmosfeer door? %:</label>
+            <input name="atmosphereAbsorption" id="atmosphereAbsorption" type="number" value="44" min="0.1" max="100" /><br />
+            <p>Hoeveel zonlicht de atmosfeer doorlaat is van heel veel factoren afhankelijk (bewolking heeft veel demping op de zonnestraling bijvoorbeeld). Een van de factoren waar geen rekening mee wordt gehouden is dat zonnestralen een langere weg aflegen door de atmosfeer in de winter</p>
+        </fieldset>
+        <br />
+        <fieldset>
+            <legend>Constantes</legend>
+            <label for="earthAngle">Hoek aard-as (in graden):</label>
+            <input name="earthAngle" id="earthAngle" type="number" value="23.4365472133" max="45" min="-45" /><br /><br/>
+            <label for="solarConstant">Zonneconstante aarde (W/m2):</label>
+            <input name="solarConstant" id="solarConstant" type="number" value="1361" min="1" /><br /><br/>
+            <label for="dateCorrection">Datum verschil/correctie met baan in dagen:</label>
+            <input name="dateCorrection" id="dateCorrection" type="number" value="12.25" min="-182.5" max="182.5" />
+            <p>De datum correctie wordt zo berekend: kijk op welke dag equinox in maart valt (dit is begin van de lente) en tel het aantal dagen vanaf het begin van het jaar (in 2022 79). 91.25 (dit is 365/4) - dit aantal (79) = 12.25 d</p>
+        </fieldset>
+        <br />
+        <fieldset>
+            <legend>Datums</legend>
+            <label for="dateFrom">Dag (van):</label>
+            <input name="dateFrom" id="dateFrom" type="date" value="2022-01-01" />
+            <input type="checkbox" id="moreDays" name="moreDays">
+            <label for="moreDays">Gemiddelde over meerdere dagen?</label><br />
+            <label for="dateTo">Dag tot:</label>
+            <input name="dateTo" id="dateTo" type="date" value="2022-12-31" /><br /><br/>
+            <label for="time">Start moment op de dag:</label>
+            <input type="time" id="time" name="time" type="time" value="05:00">
+            <input type="checkbox" id="moreTime" name="moreTime">
+            <label for="moreTime">Gemiddelde over tijd?</label><br>
+            <label for="endTime">Eind moment op de dag:</label>
+            <input type="time" id="endTime" name="endTime" type="time" value="22:30">
+            <p>Als er geen zonne energie valt op de gekozen tijd wordt er niks in het resultaat getoond</p>
+        </fieldset>
+        <br />
+        <button onclick="doSolarCalculate();">Bereken de opbrengst</button>
+        <br />
+        <hr />
+        <br />
+        <fieldset>
+            <legend>Resultaten zonnepanelen</legend>
+            <pre style="font-family: monospace;" id="data-solarpanels"></pre>
+        </fieldset>
+        <br />
+        <fieldset>
+            <legend>Resultaten zon</legend>
+            <pre style="font-family: monospace;" id="data-sun"></pre>
+        </fieldset>
+        <br />
+        <fieldset>
+            <legend>Resultaten extra</legend>
+            <pre style="font-family: monospace;" id="data-extra"></pre>
+        </fieldset>
+        <br />
+        <p>Er is een kleine afwijking in het aantal uur zon omdat er geen rekening wordt gehouden met de elliptische baan</p>
+    </body>
+</html>
