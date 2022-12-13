@@ -202,8 +202,8 @@
                     var yStart = new Date(dateFrom.getFullYear() + '-1-1');
                     var dayFrom = dayDiff(yStart, dateFrom);
                     var dayTo = dayDiff(yStart, dateTo);
-                    var time = new Date(dateFrom.toLocaleDateString() + ' ' + getValue('time')).getTime();
-                    var endTime = isChecked('moreTime') ? new Date(dateFrom.toLocaleDateString() + ' ' + getValue('endTime')).getTime() : time;
+                    var time = new Date(dateFrom.toDateString() + ' ' + getValue('time')).getTime();
+                    var endTime = isChecked('moreTime') ? new Date(dateFrom.toDateString() + ' ' + getValue('endTime')).getTime() : time;
                     if(isNaN(time) || isNaN(endTime) || time < dateFrom.getTime() || endTime < time)
                         throw new Error("Ongeldige tijd");
                     var hoursStart = (time - dateFrom.getTime()) / (1000*60*60);
